@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Toroide 3D – Experiencia VR pura / Tesis 1997</title>
+  <title>Toroide 3D – Experiencia VR-BOX V4 / Tesis 1997</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
   <style>
@@ -110,7 +110,7 @@
   <div id="start">
     <div class="card">
       <div class="title">Toroide VR</div>
-      <div class="subtitle">Experiencia 3D binocular inspirada en tesis 1997.</div>
+      <div class="subtitle">Experiencia VR-BOX V4: modelos más cercanos para fusión cómoda.</div>
       <button id="go">Entrar experiencia VR</button>
       <div class="hint">Luego monte el teléfono en el visor.</div>
     </div>
@@ -126,7 +126,10 @@
 
     // Experiencia pura: parámetros fijos, sin panel ni sliders.
     const CONFIG = {
-      eyeSep: 0.132,
+      // V4 VR-BOX: separación binocular reducida al 50%.
+      eyeSep: 0.066,
+      // Acerca visualmente ambos modelos hacia el centro: distancia entre modelos reducida al 50%.
+      inwardShiftFactor: 0.25,
       convergence: -0.20,
       cameraDist: 4.0,
       vrZoom: 1.18,
@@ -262,8 +265,9 @@
       return { M, VP: matMul(proj, view) };
     }
 
-    function drawEye(eyeOffset, viewport) {
+    function drawEye(eyeOffset, viewport, side) {
       const { x, y, w, h } = viewport;
+      const inwardShift = (side === "left" ? 1 : -1) * CONFIG.inwardShiftFactor * w;
       const { M, VP } = matrices(eyeOffset, w, h);
       const lift = -0.035 * h;
 
@@ -280,7 +284,7 @@
         const pv = mulMatVec(VP, pw);
         const ww = pv[3] !== 0 ? pv[3] : 1e-6;
         return [
-          x + ((pv[0] / ww) * 0.5 + 0.5) * w,
+          x + ((pv[0] / ww) * 0.5 + 0.5) * w + inwardShift,
           y + (-(pv[1] / ww) * 0.5 + 0.5) * h + lift
         ];
       }
@@ -342,8 +346,8 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const half = canvas.width / 2;
-      drawEye(-CONFIG.eyeSep * 0.5, { x: 0, y: 0, w: half, h: canvas.height });
-      drawEye(+CONFIG.eyeSep * 0.5, { x: half, y: 0, w: half, h: canvas.height });
+      drawEye(-CONFIG.eyeSep * 0.5, { x: 0, y: 0, w: half, h: canvas.height }, "left");
+      drawEye(+CONFIG.eyeSep * 0.5, { x: half, y: 0, w: half, h: canvas.height }, "right");
     }
 
     buildTorus();
