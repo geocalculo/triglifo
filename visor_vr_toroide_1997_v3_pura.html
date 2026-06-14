@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Toroide 3D – Experiencia VR pura / Tesis 1997</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      touch-action: none;
+      overscroll-behavior: none;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+
+    #start {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(255,255,255,.10), rgba(0,0,0,.86) 34%, #000 76%);
+      transition: opacity .45s ease;
+    }
+
+    #start.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .card {
+      text-align: center;
+      padding: 26px 28px;
+      max-width: 420px;
+    }
+
+    .title {
+      font-size: clamp(20px, 4vw, 32px);
+      font-weight: 800;
+      letter-spacing: .02em;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      font-size: clamp(13px, 2vw, 16px);
+      color: rgba(255,255,255,.72);
+      margin-bottom: 24px;
+      line-height: 1.45;
+    }
+
+    #go {
+      border: 0;
+      border-radius: 999px;
+      padding: 14px 24px;
+      background: #1677ff;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 750;
+      cursor: pointer;
+      box-shadow: 0 12px 32px rgba(22,119,255,.32);
+    }
+
+    .hint {
+      margin-top: 14px;
+      font-size: 12px;
+      color: rgba(255,255,255,.52);
+    }
+
+    body.running #start {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #centerMask {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      background: linear-gradient(90deg, transparent calc(50% - 1px), rgba(255,255,255,.055) 50%, transparent calc(50% + 1px));
+    }
+
+    @media (orientation: portrait) {
+      .subtitle::after {
+        content: " Gire el teléfono en horizontal antes de montarlo en el visor.";
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="cv"></canvas>
+  <div id="centerMask"></div>
+
+  <div id="start">
+    <div class="card">
+      <div class="title">Toroide VR</div>
+      <div class="subtitle">Experiencia 3D binocular inspirada en tesis 1997.</div>
+      <button id="go">Entrar experiencia VR</button>
+      <div class="hint">Luego monte el teléfono en el visor.</div>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('cv');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const start = document.getElementById('start');
+    const go = document.getElementById('go');
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    // Experiencia pura: parámetros fijos, sin panel ni sliders.
+    const CONFIG = {
+      eyeSep: 0.132,
+      convergence: -0.20,
+      cameraDist: 4.0,
+      vrZoom: 1.18,
+      alpha: 0.96,
+      majorRadius: 1.15,
+      minorRadius: 0.36,
+      majorSeg: 64,
+      minorSeg: 24,
+      lineWidth: 1.20,
+      // Rotación permanente suave, compuesta, sin intervención del usuario.
+      speedX: 0.0065,
+      speedY: 0.0115,
+      speedZ: 0.0028,
+      initialRotX: -0.48,
+      initialRotY: 0.62,
+      initialRotZ: 0.0
+    };
+
+    let wakeLock = null;
+    let vertices = [];
+    let lines = [];
+    let rot = { x: CONFIG.initialRotX, y: CONFIG.initialRotY, z: CONFIG.initialRotZ };
+
+    function resize() {
+      canvas.width = Math.floor(window.innerWidth * DPR);
+      canvas.height = Math.floor(window.innerHeight * DPR);
+    }
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => setTimeout(resize, 250));
+    resize();
+
+    function buildTorus() {
+      const R = CONFIG.majorRadius;
+      const r = CONFIG.minorRadius;
+      const majorSeg = CONFIG.majorSeg;
+      const minorSeg = CONFIG.minorSeg;
+      vertices = [];
+      lines = [];
+
+      for (let i = 0; i <= majorSeg; i++) {
+        const u = (i / majorSeg) * Math.PI * 2;
+        const cu = Math.cos(u), su = Math.sin(u);
+        for (let j = 0; j <= minorSeg; j++) {
+          const v = (j / minorSeg) * Math.PI * 2;
+          const cv = Math.cos(v), sv = Math.sin(v);
+          vertices.push([(R + r * cv) * cu, r * sv, (R + r * cv) * su]);
+        }
+      }
+      for (let i = 0; i <= majorSeg; i++) {
+        for (let j = 0; j < minorSeg; j++) {
+          const idx = i * (minorSeg + 1) + j;
+          lines.push([idx, idx + 1]);
+        }
+      }
+      for (let j = 0; j <= minorSeg; j++) {
+        for (let i = 0; i < majorSeg; i++) {
+          const idx = i * (minorSeg + 1) + j;
+          lines.push([idx, idx + (minorSeg + 1)]);
+        }
+      }
+    }
+
+    function mulMatVec(m, v) {
+      return [
+        m[0]*v[0] + m[4]*v[1] + m[8]*v[2] + m[12]*v[3],
+        m[1]*v[0] + m[5]*v[1] + m[9]*v[2] + m[13]*v[3],
+        m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14]*v[3],
+        m[3]*v[0] + m[7]*v[1] + m[11]*v[2] + m[15]*v[3]
+      ];
+    }
+
+    function matMul(a, b) {
+      const r = new Array(16).fill(0);
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          for (let k = 0; k < 4; k++) {
+            r[i + 4*j] += a[i + 4*k] * b[k + 4*j];
+          }
+        }
+      }
+      return r;
+    }
+
+    function perspective(fov, aspect, near, far) {
+      const f = 1 / Math.tan(fov / 2);
+      const nf = 1 / (near - far);
+      return [
+        f/aspect,0,0,0,
+        0,f,0,0,
+        0,0,(far+near)*nf,-1,
+        0,0,2*far*near*nf,0
+      ];
+    }
+
+    function lookAt(eye, center, up) {
+      let zx = eye[0] - center[0], zy = eye[1] - center[1], zz = eye[2] - center[2];
+      let rl = Math.hypot(zx, zy, zz) || 1;
+      const zxN = zx / rl, zyN = zy / rl, zzN = zz / rl;
+
+      let xx = up[1]*zzN - up[2]*zyN;
+      let xy = up[2]*zxN - up[0]*zzN;
+      let xz = up[0]*zyN - up[1]*zxN;
+      rl = Math.hypot(xx, xy, xz) || 1;
+      xx /= rl; xy /= rl; xz /= rl;
+
+      const yx = zyN*xz - zzN*xy;
+      const yy = zzN*xx - zxN*xz;
+      const yz = zxN*xy - zyN*xx;
+
+      return [
+        xx,yx,zxN,0,
+        xy,yy,zyN,0,
+        xz,yz,zzN,0,
+        -(xx*eye[0] + xy*eye[1] + xz*eye[2]),
+        -(yx*eye[0] + yy*eye[1] + yz*eye[2]),
+        -(zxN*eye[0] + zyN*eye[1] + zzN*eye[2]),
+        1
+      ];
+    }
+
+    function rotXMat(a) { const c = Math.cos(a), s = Math.sin(a); return [1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]; }
+    function rotYMat(a) { const c = Math.cos(a), s = Math.sin(a); return [c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]; }
+    function rotZMat(a) { const c = Math.cos(a), s = Math.sin(a); return [c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]; }
+    function translateMat(tx, ty, tz) { return [1,0,0,0, 0,1,0,0, 0,0,1,0, tx,ty,tz,1]; }
+
+    function matrices(eyeOffset, viewW, viewH) {
+      const fov = (60 / CONFIG.vrZoom) * Math.PI / 180;
+      const aspect = viewW / viewH;
+      const proj = perspective(fov, aspect, 0.05, 100);
+      const T = translateMat(0, 0, CONFIG.convergence);
+      const M = matMul(matMul(matMul(T, rotYMat(rot.y)), rotXMat(rot.x)), rotZMat(rot.z));
+      const view = lookAt([eyeOffset, 0, CONFIG.cameraDist], [0, 0, 0], [0, 1, 0]);
+      return { M, VP: matMul(proj, view) };
+    }
+
+    function drawEye(eyeOffset, viewport) {
+      const { x, y, w, h } = viewport;
+      const { M, VP } = matrices(eyeOffset, w, h);
+      const lift = -0.035 * h;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      ctx.strokeStyle = `rgba(238,247,255,${CONFIG.alpha})`;
+      ctx.lineWidth = CONFIG.lineWidth * DPR;
+      ctx.beginPath();
+
+      function project(p) {
+        const pw = mulMatVec(M, [p[0], p[1], p[2], 1]);
+        const pv = mulMatVec(VP, pw);
+        const ww = pv[3] !== 0 ? pv[3] : 1e-6;
+        return [
+          x + ((pv[0] / ww) * 0.5 + 0.5) * w,
+          y + (-(pv[1] / ww) * 0.5 + 0.5) * h + lift
+        ];
+      }
+
+      for (const line of lines) {
+        const a = project(vertices[line[0]]);
+        const b = project(vertices[line[1]]);
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator && !wakeLock) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (_) {}
+    }
+
+    async function enterExperience() {
+      document.body.classList.add('running');
+      try {
+        if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      } catch (_) {}
+      try {
+        if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+      } catch (_) {}
+      requestWakeLock();
+    }
+
+    // Un solo gesto de entrada. Después, experiencia limpia.
+    go.addEventListener('click', enterExperience);
+    start.addEventListener('click', (e) => {
+      if (e.target === start) enterExperience();
+    });
+
+    // También permite iniciar tocando cualquier parte del canvas.
+    canvas.addEventListener('click', () => {
+      if (!document.body.classList.contains('running')) enterExperience();
+    });
+
+    // Si vuelve desde pantalla completa, la experiencia sigue sin panel.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    });
+
+    function render() {
+      requestAnimationFrame(render);
+
+      rot.x += CONFIG.speedX;
+      rot.y += CONFIG.speedY;
+      rot.z += CONFIG.speedZ;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const half = canvas.width / 2;
+      drawEye(-CONFIG.eyeSep * 0.5, { x: 0, y: 0, w: half, h: canvas.height });
+      drawEye(+CONFIG.eyeSep * 0.5, { x: half, y: 0, w: half, h: canvas.height });
+    }
+
+    buildTorus();
+    render();
+  })();
+  </script>
+</body>
+</html>
